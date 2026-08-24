@@ -214,29 +214,35 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
+    // IMPORTANT: never set department.disabled = true.
+    // Disabled fields are excluded from form submission entirely,
+    // which was silently failing form.is_valid() on every edit
+    // (department is a required field) and blocking every save.
+    // Block interaction instead, same as add_staff.js, so the
+    // value still submits.
     if (department) {
-        department.disabled = true;
+        department.addEventListener('mousedown', (e) => e.preventDefault());
+        department.addEventListener('keydown', (e) => e.preventDefault());
+        department.addEventListener('focus', () => department.blur());
     }
 
     // ========================================================
     // REPORTING MANAGER
     // ========================================================
 
-    const REPORTING_RULES = {
-        "Admin": [],
-        "Manager": ["Admin"],
+    const REPORTING_MANAGER_RULES = {
+        'Admin': null,
+        'Manager': ['Admin'],
+        'Developer': ['Admin', 'Manager'],
+        'Trainer': ['Admin', 'Manager'],
+        'HR': ['Admin', 'Manager'],
 
-        "Developer": ["Manager"],
-        "Trainer": ["Manager"],
-        "HR": ["Manager"],
+        'Sales Exec Lead': ['Admin', 'Manager'],
+        'Marketing Lead': ['Admin', 'Manager'],
 
-        "Sales Exec Lead": ["Manager"],
-        "Marketing Lead": ["Manager"],
-
-        "Sales Exec": ["Sales Exec Lead"],
-
-        "Digital Marketing": ["Marketing Lead"],
-        "Content Creator": ["Marketing Lead"]
+        'Digital Marketing': ['Marketing Lead'],
+        'Content Creator': ['Marketing Lead'],
+        'Sales Exec': ['Sales Exec Lead'],
     };
 
     let staffRoles = {};
@@ -296,100 +302,103 @@ document.addEventListener("DOMContentLoaded", function () {
         return "";
     }
 
+    // ------------------------------------------------------
+    // FIX: was referencing the undefined variable
+    // `REPORTING_RULES` (typo) instead of the real
+    // `REPORTING_MANAGER_RULES`. That threw a silent
+    // ReferenceError every time this ran, which broke
+    // everything chained after it (validateRole,
+    // validateMonthlyTarget, checkChanges, and even the
+    // page-load INITIALIZE calls at the bottom of this file).
+    // ------------------------------------------------------
+
+    function normalizeRoleText(text) {
+        return (text || "").toString().trim().toLowerCase();
+    }
+
     function filterReportingManagers() {
 
         if (!role || !reportingManager) {
             return;
         }
 
-        const selectedRole =
-            getRoleText();
+        const selectedRole = getRoleText();
+        const selectedRoleNorm = normalizeRoleText(selectedRole);
+        const group = $("reportingManagerGroup");
 
-        const allowedRoles =
-            REPORTING_RULES[selectedRole];
+        // Find the rule by normalized comparison (case/whitespace safe),
+        // instead of relying on an exact string match against
+        // REPORTING_MANAGER_RULES keys.
+        let allowedRoles;
+        let ruleKeyFound = false;
 
-        if (
-            selectedRole === "Admin" ||
-            allowedRoles === null ||
-            typeof allowedRoles === "undefined" &&
-            selectedRole === ""
-        ) {
+        for (const key in REPORTING_MANAGER_RULES) {
+            if (normalizeRoleText(key) === selectedRoleNorm) {
+                allowedRoles = REPORTING_MANAGER_RULES[key];
+                ruleKeyFound = true;
+                break;
+            }
+        }
+
+        if (!ruleKeyFound) {
+            allowedRoles = selectedRoleNorm ? 'ANY' : null;
+        }
+
+        // Normalize the allowed list once for comparison below.
+        const allowedRolesNorm =
+            Array.isArray(allowedRoles)
+                ? allowedRoles.map(normalizeRoleText)
+                : allowedRoles;
+
+        if (allowedRoles === null) {
             reportingManager.value = "";
             reportingManager.required = false;
-
-            reportingManager.innerHTML =
-                '<option value="">---------</option>';
-
-            const group =
-                $("reportingManagerGroup");
+            reportingManager.innerHTML = '<option value="">---------</option>';
 
             if (group) {
                 group.style.display = "none";
             }
 
+            checkChanges();
             return;
         }
-
-        const group =
-            $("reportingManagerGroup");
 
         if (group) {
             group.style.display = "";
         }
 
-        reportingManager.required = true;
+        // Reporting Manager is optional — never force it as required.
+        reportingManager.required = false;
 
-        const currentValue =
-            reportingManager.value;
+        const currentValue = reportingManager.value;
 
         reportingManager.innerHTML = "";
 
-        const placeholder =
-            document.createElement("option");
-
+        const placeholder = document.createElement("option");
         placeholder.value = "";
         placeholder.textContent = "---------";
+        reportingManager.appendChild(placeholder);
 
-        reportingManager.appendChild(
-            placeholder
-        );
+        managerOptions.forEach(function (option) {
 
-        managerOptions.forEach(
-            function (option) {
+            const managerRole = getManagerRole(option);
+            const managerRoleNorm = normalizeRoleText(managerRole);
 
-                const managerRole =
-                    getManagerRole(option);
+            if (allowedRolesNorm === 'ANY' || allowedRolesNorm.includes(managerRoleNorm)) {
 
-                if (
-                    allowedRoles.includes(
-                        managerRole
-                    )
-                ) {
-
-                    const newOption =
-                        option.cloneNode(true);
-
-                    reportingManager.appendChild(
-                        newOption
-                    );
-                }
+                const newOption = option.cloneNode(true);
+                reportingManager.appendChild(newOption);
             }
+        });
+
+        // Keep the previously-selected manager if it's still
+        // a valid option after filtering (important for edit page
+        // so the existing reporting manager doesn't get wiped out).
+        const exists = Array.from(reportingManager.options).some(
+            option => option.value === currentValue
         );
 
-        const exists =
-            Array.from(
-                reportingManager.options
-            ).some(
-                option =>
-                    option.value === currentValue
-            );
-
-        if (exists) {
-            reportingManager.value =
-                currentValue;
-        } else {
-            reportingManager.value = "";
-        }
+        reportingManager.value = exists ? currentValue : "";
 
         checkChanges();
     }
@@ -1930,31 +1939,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 return;
             }
 
-            /*
-                Reporting manager is required for
-                every role except Admin.
-            */
-
-            const roleText =
-                getRoleText();
-
-            if (
-                roleText !== "Admin" &&
-                reportingManager &&
-                reportingManager.style &&
-                $("reportingManagerGroup") &&
-                $("reportingManagerGroup").style.display !== "none" &&
-                !reportingManager.value
-            ) {
-
-                alert(
-                    "Please select a Reporting Manager."
-                );
-
-                reportingManager.focus();
-
-                return;
-            }
+            // Reporting Manager is optional — no forced check here.
 
             if (
                 updateBtn &&

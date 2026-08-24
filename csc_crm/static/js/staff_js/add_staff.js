@@ -1317,7 +1317,15 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ================= REPORTING MANAGER — ROLE-BASED FILTER =================
-
+//
+// RULE:
+//  - "Lead" roles (Sales Exec Lead / Marketing Lead) -> Reporting Manager
+//    dropdown la Admin + Manager rendume kaatanum.
+//  - "Employee" roles (Sales Exec / Digital Marketing / Content Creator)
+//    -> Reporting Manager la avangaloda department Lead mattum kaatanum.
+//  - Admin -> Reporting Manager field-e venaam (hidden).
+//  - Manager, Developer, Trainer, HR -> existing rule padi (Admin / Manager).
+//
 document.addEventListener('DOMContentLoaded', () => {
     const roleInput = document.getElementById('roleInput');
     const reportingManagerGroup = document.getElementById('reportingManagerGroup');
@@ -1329,17 +1337,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const staffRoles = staffRolesDataEl ? JSON.parse(staffRolesDataEl.textContent) : {};
 
     const REPORTING_MANAGER_RULES = {
-        'Admin': null,
-        'Manager': ['Admin'],
-        'Developer': ['Manager'],
-        'Trainer': ['Manager'],
-        'HR': ['Manager'],
-        'Sales Exec Lead': ['Manager'],
-        'Marketing Lead': ['Manager'],
-        'Digital Marketing': ['Marketing Lead'],
-        'Content Creator': ['Marketing Lead'],
-        'Sales Exec': ['Sales Exec Lead'],
-    };
+    'Admin': null,
+    'Manager': ['Admin'],
+    'Developer': ['Admin', 'Manager'],
+    'Trainer': ['Admin', 'Manager'],
+    'HR': ['Admin', 'Manager'],
+
+    'Sales Exec Lead': ['Admin', 'Manager'],
+    'Marketing Lead': ['Admin', 'Manager'],
+
+    'Digital Marketing': ['Marketing Lead'],
+    'Content Creator': ['Marketing Lead'],
+    'Sales Exec': ['Sales Exec Lead'],
+};
 
     const allOptions = Array.from(reportingManagerInput.options).filter(opt => opt.value !== '');
     const placeholderOption = Array.from(reportingManagerInput.options).find(opt => opt.value === '')
